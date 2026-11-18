@@ -1,0 +1,25 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+
+# Dados reais da empresa parceira: NUNCA versionar (LGPD)
+dados/
+dados_reais/
+planilhas_reais/
+saida_local/
+
+# Variáveis de ambiente locais e credenciais (nunca versionar)
+.env
+.env.*
+*.json.key
+credentials*.json
+
+# Editores / SO
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+desktop.ini

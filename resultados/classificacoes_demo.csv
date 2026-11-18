@@ -1,0 +1,27 @@
+subpasta,arquivo,discriminacao,classificacao
+Clinica_Alfa,faturamento_marco.xlsx,Consulta médica realizada em 03/03,CONSULTA
+Clinica_Alfa,faturamento_marco.xlsx,CONSULTAS MÉDICAS - COMPETÊNCIA MARÇO,CONSULTA
+Clinica_Alfa,faturamento_marco.xlsx,Prestação de serviços médicos em coordenação,CONSULTA
+Clinica_Alfa,faturamento_marco.xlsx,PRESTACAO DED SERVICOS MEDICOS,CONSULTA
+Clinica_Alfa,faturamento_marco.xlsx,Folha médica referente a março,CONSULTA
+Clinica_Alfa,faturamento_marco.xlsx,Cirurgia de catarata,PROCEDIMENTO
+Clinica_Alfa,faturamento_marco.xlsx,Procedimentos médicos ambulatoriais,PROCEDIMENTO
+Clinica_Alfa,faturamento_marco.xlsx,Produção hospitalar - competência 03,PROCEDIMENTO
+Clinica_Alfa,faturamento_marco.xlsx,Atendimento ambulatorial,ANALISAR
+Clinica_Alfa,faturamento_marco.xlsx,Consulta médica e cirurgia de implante de cateter,ANALISAR
+Clinica_Alfa,faturamento_marco.xlsx,,(sem categoria)
+Clinica_Alfa,faturamento_marco.xlsx,Reembolso de despesas de deslocamento,(sem categoria)
+Clinica_Beta,faturamento_marco.xlsx,consulta medica,CONSULTA
+Clinica_Beta,faturamento_marco.xlsx,Serviços médicos prestados no hospital,ANALISAR
+Clinica_Beta,faturamento_marco.xlsx,Exame diagnóstico de imagem,PROCEDIMENTO
+Clinica_Beta,faturamento_marco.xlsx,Atendimentos realizados no período,ANALISAR
+Clinica_Beta,faturamento_marco.xlsx,Ambulatório - plantão noturno,PROCEDIMENTO
+Clinica_Beta,faturamento_marco.xlsx,Coordenação de equipe médica,CONSULTA
+Clinica_Beta,faturamento_marco.xlsx,12345,(sem categoria)
+Consultorio_Gama,notas_marco.xlsx,Consulta médica,CONSULTA
+Consultorio_Gama,notas_marco.xlsx,Exames diagnósticos laboratoriais,(sem categoria)
+Consultorio_Gama,notas_marco.xlsx,Serviços hospitalares,PROCEDIMENTO
+Consultorio_Gama,notas_marco.xlsx,Coordenação administrativa do escritório,CONSULTA
+Consultorio_Gama,notas_marco.xlsx,Consulta  médica,(sem categoria)
+Consultorio_Gama,notas_marco.xlsx,Consulta \n médica,(sem categoria)
+Consultorio_Gama,notas_marco.xlsx,Hospital-dia,PROCEDIMENTO

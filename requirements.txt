@@ -1,0 +1,4 @@
+# Dependências mínimas para rodar o classificador fora do Colab e os testes.
+# (No Google Colab, pandas e openpyxl já vêm instalados.)
+pandas>=2.0
+openpyxl>=3.1

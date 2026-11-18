@@ -1,0 +1,38 @@
+==================================================
+  CLASSIFICADOR DE PLANILHAS
+==================================================
+
+📂 Conectando ao Google Drive...
+
+🔍 Verificando conteúdo da pasta 'planilhas_exemplo'...
+
+  📁 Clinica_Alfa/
+     ⏭️  observacoes.txt (ignorado)
+     ✅ faturamento_marco.xlsx (válido)
+     ⏭️  nota_fiscal_exemplo.pdf (ignorado)
+     ⏭️  controle_interno.xlsx (sem coluna 'Discriminação' — ignorado)
+
+  📁 Clinica_Beta/
+     ✅ faturamento_marco.xlsx (válido)
+     ⏭️  2025 (ignorado)
+
+  📁 Consultorio_Gama/
+     ✅ notas_marco.xlsx (válido)
+     ⚠️  arquivo_corrompido.xlsx (não foi possível ler — ignorado)
+
+✅ 3 planilha(s) válida(s) encontrada(s).
+
+🔄 Processando planilhas...
+
+  [1/3] Clinica_Alfa/faturamento_marco.xlsx... ✅
+  [2/3] Clinica_Beta/faturamento_marco.xlsx... ✅
+  [3/3] Consultorio_Gama/notas_marco.xlsx... ✅
+
+📧 Enviando e-mail com 3 anexo(s)...
+✅ E-mail enviado para destinatario@exemplo.com!
+
+==================================================
+  CONCLUÍDO: 3/3 planilhas processadas
+==================================================
+
+[local] E-mail NÃO foi enviado; a mensagem foi gravada em: ../resultados/email_demo.eml
