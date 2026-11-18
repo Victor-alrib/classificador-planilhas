@@ -3,8 +3,11 @@
 Nenhum dado aqui veio da empresa parceira. Os textos da coluna "Discriminação"
 foram escritos à mão para cobrir:
 - os casos previstos nas regras (CONSULTA, PROCEDIMENTO, ANALISAR);
-- variações que a normalização precisa tolerar (maiúsculas, acentos, erro de digitação);
-- casos de borda e limitações conhecidas (plural fora da lista, espaço duplo, termo amplo demais);
+- variações que a normalização precisa tolerar (maiúsculas, acentos, erro de digitação,
+  plural, espaço duplo, quebra de linha, pontuação);
+- os casos que a versão 1 do notebook classificava errado (ver MUDANCAS_DESDE_V1);
+- formatação que precisa sobreviver: estilos, formatos de data e moeda, fórmula,
+  filtro no cabeçalho, painel congelado e uma segunda aba;
 - arquivos que devem ser ignorados (PDF, TXT, planilha sem a coluna, arquivo corrompido,
   subpasta aninhada e arquivo solto na raiz).
 
@@ -26,9 +29,10 @@ from openpyxl.styles import Font, PatternFill
 PASTA_PADRAO = Path(__file__).resolve().parent / "planilhas_exemplo"
 
 COLUNAS = ["Data", "Nº NF", "Tomador", "Discriminação", "Valor (R$)"]
-LARGURAS = {"A": 12, "B": 9, "C": 30, "D": 52, "E": 14}
+COLUNA_FORMULA = "Valor líquido (R$)"          # só na Clínica Alfa: =E*0,95
+LARGURAS = {"A": 12, "B": 9, "C": 30, "D": 52, "E": 14, "F": 18}
 
-# (texto da Discriminação, classificação esperada pelo código atual)
+# (texto da Discriminação, classificação esperada pela versão atual do notebook)
 # None = célula vazia
 CLINICA_ALFA = [
     ("Consulta médica realizada em 03/03", "CONSULTA"),
@@ -51,20 +55,35 @@ CLINICA_BETA = [
     ("Exame diagnóstico de imagem", "PROCEDIMENTO"),
     ("Atendimentos realizados no período", "ANALISAR"),
     ("Ambulatório - plantão noturno", "PROCEDIMENTO"),
-    ("Coordenação de equipe médica", "CONSULTA"),
+    ("Coordenação de equipe médica", ""),           # "coordenação" sozinha não basta
     (12345, ""),                                              # número no lugar de texto
 ]
 
-# Casos que mostram limitações do código atual (ver README, "Limitações")
+# Casos que a versão 1 classificava errado, além de variações de escrita
 CONSULTORIO_GAMA = [
     ("Consulta médica", "CONSULTA"),
-    ("Exames diagnósticos laboratoriais", ""),     # a regra pede PROCEDIMENTO; a lista só tem o singular
-    ("Serviços hospitalares", "PROCEDIMENTO"),     # pega pelo termo "hospital"
-    ("Coordenação administrativa do escritório", "CONSULTA"),  # "coordenação" sozinho é amplo demais
-    ("Consulta  médica", ""),                      # espaço duplo quebra a correspondência
-    ("Consulta\nmédica", ""),                      # quebra de linha dentro da célula
+    ("Exames diagnósticos laboratoriais", "PROCEDIMENTO"),   # plural do termo da regra
+    ("Serviços hospitalares", "PROCEDIMENTO"),
+    ("Coordenação administrativa do escritório", ""),       # "coordenação" sozinha não basta
+    ("Consulta  médica", "CONSULTA"),                         # espaço duplo
+    ("Consulta\nmédica", "CONSULTA"),                         # quebra de linha dentro da célula
     ("Hospital-dia", "PROCEDIMENTO"),
+    ("Hospitais conveniados", "PROCEDIMENTO"),               # plural de "hospital"
+    ("Exames diagnósticos; consultas médicas", "ANALISAR"),   # os dois tipos juntos
+    ("Consultas médicas realizadas em coordenação", "CONSULTA"),
 ]
+
+# Linhas em que a versão 1 (a primeira entregue à empresa) dava outro resultado.
+# Texto -> classificação da versão 1. As demais linhas saem iguais nas duas versões.
+MUDANCAS_DESDE_V1 = {
+    "Coordenação de equipe médica": "CONSULTA",
+    "Exames diagnósticos laboratoriais": "",
+    "Coordenação administrativa do escritório": "CONSULTA",
+    "Consulta  médica": "",
+    "Consulta\nmédica": "",
+    "Hospitais conveniados": "",
+    "Exames diagnósticos; consultas médicas": "CONSULTA",
+}
 
 ESPERADO = {
     ("Clinica_Alfa", "faturamento_marco.xlsx"): CLINICA_ALFA,
@@ -81,11 +100,12 @@ _PDF_MINIMO = (
 )
 
 
-def _planilha_faturamento(caminho: Path, tomador: str, linhas: list, *, aba_extra: bool = False) -> None:
+def _planilha_faturamento(caminho: Path, tomador: str, linhas: list, *,
+                          aba_extra: bool = False, formula: bool = False) -> None:
     wb = Workbook()
     ws = wb.active
     ws.title = "Faturamento"
-    ws.append(COLUNAS)
+    ws.append(COLUNAS + ([COLUNA_FORMULA] if formula else []))
     for celula in ws[1]:
         celula.font = Font(bold=True, color="FFFFFF")
         celula.fill = PatternFill("solid", fgColor="1F3864")
@@ -95,8 +115,13 @@ def _planilha_faturamento(caminho: Path, tomador: str, linhas: list, *, aba_extr
         linha[0].number_format = "DD/MM/YYYY"
     for linha in ws.iter_rows(min_row=2, min_col=5, max_col=5):
         linha[0].number_format = '"R$" #,##0.00'
+    if formula:
+        for i in range(2, len(linhas) + 2):
+            ws.cell(row=i, column=6, value=f"=E{i}*0.95").number_format = '"R$" #,##0.00'
+        ws.auto_filter.ref = f"A1:F{len(linhas) + 1}"
     for letra, largura in LARGURAS.items():
-        ws.column_dimensions[letra].width = largura
+        if letra != "F" or formula:
+            ws.column_dimensions[letra].width = largura
     ws.freeze_panes = "A2"
     if aba_extra:
         resumo = wb.create_sheet("Resumo")
@@ -114,9 +139,9 @@ def gerar(destino: Path = PASTA_PADRAO) -> Path:
     beta = destino / "Clinica_Beta"
     gama = destino / "Consultorio_Gama"
 
-    # Planilhas válidas (a da Clínica Alfa tem uma segunda aba, para mostrar o que se perde)
+    # Planilhas válidas (a da Clínica Alfa tem fórmula, filtro e uma segunda aba)
     _planilha_faturamento(alfa / "faturamento_marco.xlsx", "Operadora Exemplo S.A. (fictícia)",
-                          CLINICA_ALFA, aba_extra=True)
+                          CLINICA_ALFA, aba_extra=True, formula=True)
     _planilha_faturamento(beta / "faturamento_marco.xlsx", "Plano de Saúde Modelo (fictício)",
                           CLINICA_BETA)
     _planilha_faturamento(gama / "notas_marco.xlsx", "Convênio Demonstração (fictício)",

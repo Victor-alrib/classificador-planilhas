@@ -4,11 +4,13 @@
 
 Automação em Python que percorre as pastas de um Google Drive, encontra as planilhas de faturamento, classifica cada registro como **CONSULTA**, **PROCEDIMENTO** ou **ANALISAR** por regras determinísticas e envia todas as planilhas classificadas num único e-mail. Ela roda no Google Colab, sem instalar nada e sem custo.
 
-Desenvolvido num **projeto de extensão do IFSP** para um escritório de contabilidade parceiro, que classificava à mão cerca de 50 planilhas por mês. **A automação foi entregue ao escritório, com manual de uso, e roda na conta Google da própria empresa.**
+Desenvolvido num **projeto de extensão do IFSP** para um escritório de contabilidade parceiro, que classificava à mão cerca de 50 planilhas por mês. **A versão 1 foi entregue ao escritório, com manual de uso, e roda na conta Google da própria empresa.**
 
-![Planilha fictícia depois da classificação](resultados/capturas/01_planilha_classificada.png)
+![Planilha fictícia classificada pela versão 2](resultados/capturas/01_planilha_classificada.png)
 
-> **Nenhum dado da empresa parceira está neste repositório.** Todas as planilhas, textos e valores aqui são fictícios, gerados por [`exemplos/gerar_exemplos.py`](exemplos/gerar_exemplos.py). As cores da imagem acima foram aplicadas só na captura.
+> **Nenhum dado da empresa parceira está neste repositório.** Todas as planilhas, textos e valores aqui são fictícios, gerados por [`exemplos/gerar_exemplos.py`](exemplos/gerar_exemplos.py).
+
+**Versão atual: 2.** Corrige as falhas que os testes encontraram na versão 1, a que está em uso na empresa: plural, espaços, a palavra "coordenação", a perda de formatação e a senha salva no notebook. A versão 2 ainda precisa ser validada com a empresa. Detalhes em [`CHANGELOG.md`](CHANGELOG.md).
 
 ---
 
@@ -32,7 +34,7 @@ flowchart LR
     B --> C{É .xlsx com a coluna<br/>Discriminação?}
     C -- não --> D[Ignora e registra no log]
     C -- sim --> E[Normaliza o texto<br/>e aplica as regras]
-    E --> F[Grava CLASSIFICADO_*.xlsx<br/>com a coluna nova]
+    E --> F[Acrescenta a coluna<br/>na planilha original]
     F --> G[Um único e-mail com<br/>todos os anexos e um resumo]
 ```
 
@@ -41,33 +43,36 @@ flowchart LR
 | Categoria | Quando | Prioridade |
 |---|---|---|
 | **ANALISAR** | O texto contém `atendimento(s)`, **ou** tem termos de CONSULTA e de PROCEDIMENTO ao mesmo tempo | 1ª |
-| **CONSULTA** | Consulta médica, consultas médicas, coordenação, prestação de serviços médicos, folha médica | 2ª |
+| **CONSULTA** | Consulta médica, realizadas em coordenação, prestação de serviços médicos, folha médica | 2ª |
 | **PROCEDIMENTO** | Procedimento, cirurgia, exame diagnóstico, serviço hospitalar, ambulatório, hospital, produção | 3ª |
 | (vazio) | Nenhum termo encontrado; a quantidade aparece no resumo do e-mail | — |
+
+Antes de comparar, o texto e os termos passam pela mesma limpeza: minúsculas, sem acentos, pontuação e espaços repetidos viram um espaço só, e cada palavra vai para o singular. Assim "EXAMES DIAGNÓSTICOS;" e "exame diagnóstico" caem na mesma regra.
 
 ### Decisões técnicas e por quê
 
 | Decisão | Por quê |
 |---|---|
 | Regras fixas em vez de IA generativa | O cliente precisava de resultado **igual toda vez** e auditável: dá para explicar por que cada linha recebeu sua categoria. A IA testada antes respondia diferente ao mesmo texto |
-| Normalizar o texto antes de comparar (minúsculas, sem acentos via `unicodedata.normalize('NFKD')`) | "CONSULTA MÉDICA", "consulta medica" e "Consulta Médica" precisam cair na mesma regra |
+| Limpar texto **e** termos com a mesma função (acentos, pontuação, espaços, plural) | Termos ficam escritos como na regra do cliente, legíveis, e cada um já cobre as variações de escrita |
 | Casos ambíguos viram ANALISAR, não um palpite | Melhor mandar para revisão humana do que classificar errado sem avisar |
+| Acrescentar a coluna com `openpyxl` **no arquivo original** | Requisito de "estrutura 100 % preservada": abas, fórmulas, estilos e formatos ficam intactos. A v1 regravava pelo pandas e perdia tudo isso |
 | Google Colab + `drive.mount()` em vez da API do Google Drive | A API exigiria um projeto no Google Cloud (que pedia cartão e depósito) e credenciais de serviço; o Colab acessa o Drive da própria usuária de graça |
-| Gmail via SMTP com senha de app | Envio gratuito, sem serviço externo, autenticado com SSL na porta 465 |
-| Formulário do Colab (`#@param`) | A usuária preenche 4 campos e clica em ▶; não vê nem edita código |
+| Gmail via SMTP com senha de app, lida dos *Secrets* do Colab ou digitada na hora | Envio gratuito e autenticado com SSL; a senha nunca fica gravada no notebook |
+| Formulário do Colab (`#@param`) | A usuária preenche 3 campos e clica em ▶; não vê nem edita código |
 | Filtrar pelo **conteúdo** (presença da coluna `Discriminação`), não pelo nome do arquivo | As pastas reais misturam PDFs, contratos e outras planilhas sem padrão de nome |
 | Prefixo `CLASSIFICADO_<subpasta>_` no arquivo gerado | Duas subpastas podem ter um `faturamento.xlsx`; o prefixo evita sobrescrever e mostra a origem |
 | Erros por arquivo não interrompem o lote | Uma planilha corrompida não pode impedir o envio das outras 49 |
 
 ## Resultados
 
-Medidos rodando **o código do notebook entregue** sobre a pasta de exemplo fictícia. Detalhes em [`resultados/`](resultados/).
+Medidos rodando **o código do notebook** sobre a pasta de exemplo fictícia. Detalhes em [`resultados/`](resultados/).
 
 - **3 planilhas válidas processadas e 6 itens ignorados corretamente** (PDF, TXT, planilha sem a coluna, arquivo corrompido, subpasta aninhada, arquivo solto na raiz).
-- **26 linhas classificadas**, todas iguais ao esperado para o código atual: 9 CONSULTA, 7 PROCEDIMENTO, 4 ANALISAR e 6 sem categoria.
-- Das 6 sem categoria, **3 são limitações reais** diante da regra do cliente (ver abaixo).
-- **Dados originais intactos** célula a célula; nome da aba e larguras de coluna preservados.
-- **47 testes automatizados**: 44 passando e 3 falhas esperadas (`xfail`) que documentam as limitações.
+- **29 linhas classificadas, todas de acordo com as regras**: 10 CONSULTA, 9 PROCEDIMENTO, 5 ANALISAR e 5 sem categoria.
+- **Versão 1 x versão 2 nos mesmos arquivos:** só 7 linhas mudaram, todas pelos motivos previstos (plural, espaços, "coordenação"); as outras 22 saíram iguais.
+- **Planilha preservada:** abas, fórmulas, estilos, formatos de data e moeda, painel congelado e filtro iguais ao original. Zero diferenças de estilo célula a célula, contra 48 na versão 1.
+- **85 testes automatizados, todos passando.** Eles rodam o código de dentro do notebook, inclusive as três formas de obter a senha.
 
 > Os números acima vêm de dados fictícios e medem se o código faz o que foi especificado. A taxa de acerto e o ganho de tempo com as planilhas reais serão medidos com a empresa; as metas do projeto são ≥ 90 % de acerto e ≥ 70 % de redução de tempo.
 
@@ -77,7 +82,8 @@ Medidos rodando **o código do notebook entregue** sobre a pasta de exemplo fict
 
 1. Envie [`notebook/classificador_planilhas.ipynb`](notebook/classificador_planilhas.ipynb) para o seu Google Drive e abra com **Google Colaboratory**.
 2. Crie uma **senha de app** do Gmail em `myaccount.google.com/security` (exige verificação em duas etapas).
-3. Preencha os 4 campos do formulário (pasta, e-mail remetente, senha de app, e-mail de destino) e execute as duas células.
+3. Opcional: guarde a senha nos *Secrets* do Colab (ícone de chave na barra lateral), com o nome `SENHA_APP` e o acesso do notebook ligado. Sem isso, a senha é pedida a cada execução.
+4. Preencha os 3 campos do formulário (pasta, e-mail remetente e e-mail de destino) e execute as duas células.
 
 Passo a passo completo para quem não programa: [`docs/MANUAL_DE_USO.md`](docs/MANUAL_DE_USO.md).
 
@@ -93,48 +99,46 @@ pip install -r requirements-dev.txt
 
 python exemplos/gerar_exemplos.py      # recria a pasta de exemplo fictícia
 python executar_local.py               # roda o notebook sobre ela
-python -m pytest                       # 44 passed, 3 xfailed
+python -m pytest                       # 85 passed
 ```
 
-`executar_local.py` executa **o mesmo código** da célula de processamento do notebook. Ele só troca o Google Drive por uma pasta local e, em vez de enviar o e-mail, grava a mensagem em `resultados/email_demo.eml`. Para usar outra pasta: `python executar_local.py --entrada CAMINHO --saida CAMINHO`.
+`executar_local.py` executa **o mesmo código** da célula de processamento do notebook. Ele só troca o Google Drive por uma pasta local, simula a senha e, em vez de enviar o e-mail, grava a mensagem em `resultados/email_demo.eml`. Opções: `--entrada` e `--saida` para usar outras pastas, e `--notebook notebook/historico/classificador_planilhas_v1.ipynb` para rodar a versão 1.
 
 ### Credenciais
 
-O repositório **não contém e-mails, senhas nem tokens reais**: os campos do formulário trazem só valores de exemplo, e há um teste que garante isso. A senha de app é digitada pela própria usuária, na conta Google dela, e nunca deve ser enviada ao GitHub.
+O repositório **não contém e-mails, senhas nem tokens reais**. O formulário só tem valores de exemplo e não tem campo de senha; há testes que garantem as duas coisas. A senha de app fica nos *Secrets* da conta Google da usuária ou é digitada na hora, e nunca deve ser enviada ao GitHub.
 
 ## Limitações e próximos passos
 
-**Limitações (todas reproduzidas na pasta de exemplo e cobertas por testes)**
+**Limitações**
 
-- **"Exames diagnósticos" no plural não é reconhecido.** A busca é por trecho exato e a lista tem só o singular `exame diagnostico`. "Serviços hospitalares" só funciona porque também contém `hospital`.
-- **Espaço duplo ou quebra de linha** dentro da célula impedem a correspondência.
-- **"Coordenação" sozinha vira CONSULTA**, mesmo em "coordenação administrativa"; a regra do cliente fala em "consultas médicas realizadas em coordenação".
-- **A formatação não é preservada por completo.** Ficam os dados, o nome da aba e as larguras. Perdem-se as outras abas, o estilo do cabeçalho, o painel congelado e os formatos de data e moeda, porque o arquivo é regravado pelo pandas.
-- Só **um nível de subpastas** é visitado, e a coluna precisa se chamar exatamente `Discriminação` na primeira linha.
-- A senha de app digitada no formulário **fica salva no notebook** quando o Colab salva o arquivo.
+- **A interpretação de "coordenação" precisa ser confirmada com o cliente.** A v2 exige "realizadas em coordenação"; a v1 aceitava a palavra sozinha. Isso muda 2 das 29 linhas de exemplo.
+- **"Procedimento" sozinho continua valendo como PROCEDIMENTO**, como na v1. A regra fala em "procedimentos médicos", mas nas planilhas de faturamento a palavra quase sempre se refere a procedimento médico.
+- **A passagem para o singular é uma regra simples**, não um dicionário. Ela foi testada com todos os termos das regras, mas plurais irregulares fora deles podem não ser reconhecidos.
+- Só a **primeira aba** é classificada; o cabeçalho precisa estar na primeira linha, com a coluna chamada exatamente `Discriminação`.
+- Só **um nível de subpastas** é visitado.
+- Se a planilha usa uma "Tabela" formatada do Excel, a coluna nova fica fora dela. Gráficos e imagens feitos no Excel passam pelo `openpyxl`, que mantém a maioria dos recursos, mas não todos.
 - Os arquivos classificados ficam só na sessão temporária do Colab. Se o envio do e-mail falhar, precisam ser gerados de novo.
-- Avaliado automaticamente só com dados fictícios; a taxa de acerto com dados reais é o próximo passo com a empresa.
+- Avaliado automaticamente só com dados fictícios. Nos testes, os *Secrets* e a caixa de senha do Colab são simulados; o teste no Colab real faz parte da validação com a empresa.
 
 **Próximos passos**
 
-- [ ] Normalizar espaços e aceitar plurais (ou comparar por palavras em vez de trecho)
-- [ ] Escrever a coluna nova direto com `openpyxl` no arquivo original, preservando formatação e outras abas
-- [ ] Ler a senha pelos *Secrets* do Colab (`google.colab.userdata`) em vez do formulário
-- [ ] Salvar os arquivos classificados também numa pasta do Drive
+- [ ] Validar a versão 2 com a empresa no Colab, em especial a regra de "coordenação" e a leitura da senha pelos *Secrets*
 - [ ] Medir acerto e tempo com um lote real, comparado à classificação manual
+- [ ] Salvar os arquivos classificados também numa pasta do Drive
 - [ ] Gerar um log persistente de cada execução, para auditoria
 
 ## Stack
 
-**Linguagem e bibliotecas:** Python, pandas, openpyxl, unicodedata, smtplib, pytest
-**Ambiente:** Google Colab, Google Drive, Gmail (SMTP com SSL)
-**Técnicas:** automação de processos (RPA), classificação baseada em regras, normalização de texto, ETL de planilhas, testes do notebook fora do Colab
+**Linguagem e bibliotecas:** Python, pandas, openpyxl, unicodedata, re, smtplib, getpass, pytest
+**Ambiente:** Google Colab (formulário, *Secrets*), Google Drive, Gmail (SMTP com SSL)
+**Técnicas:** automação de processos (RPA), classificação baseada em regras, normalização de texto, edição de planilhas preservando formatação, testes do notebook fora do Colab
 
-Documentação técnica: [arquitetura](docs/ARQUITETURA.md) · [manual de uso](docs/MANUAL_DE_USO.md) · [exemplos](exemplos/README.md)
+Documentação técnica: [arquitetura](docs/ARQUITETURA.md) · [manual de uso](docs/MANUAL_DE_USO.md) · [exemplos](exemplos/README.md) · [histórico de versões](CHANGELOG.md)
 
 ## Autoria
 
-Projeto de extensão do IFSP. A primeira versão do motor de classificação foi escrita por um colega da equipe. **Victor** (Engenharia de Controle e Automação) levou a demanda do escritório para o projeto, definiu os requisitos da automação, testou no Colab e entregou o programa e o manual à usuária, com auxílio de IA (Claude) na escrita do código, dos testes e da documentação.
+Projeto de extensão do IFSP. A primeira versão do motor de classificação foi escrita por um colega da equipe. **Victor** (Engenharia de Controle e Automação) levou a demanda do escritório para o projeto, definiu os requisitos da automação, testou no Colab e entregou o programa e o manual à usuária, e desenvolveu a versão 2, com auxílio de IA (Claude) na escrita do código, dos testes e da documentação.
 
 ## Licença
 

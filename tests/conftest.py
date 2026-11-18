@@ -1,4 +1,5 @@
 import ast
+import re
 import sys
 import unicodedata
 from pathlib import Path
@@ -12,20 +13,28 @@ sys.path.insert(0, str(RAIZ))
 from executar_local import NOTEBOOK, carregar_celula_processamento  # noqa: E402
 from exemplos.gerar_exemplos import gerar  # noqa: E402
 
+FUNCOES_DE_REGRA = {"singular", "limpar_texto", "classificar_servico"}
+
 
 @pytest.fixture(scope="session")
 def regras():
-    """Extrai do notebook só as funções de classificação, sem rodar o resto da célula.
+    """Extrai do notebook só as regras (funções e listas de termos), sem rodar o resto.
 
     Assim os testes de regra usam o código que está no notebook entregue,
     e não uma cópia que poderia ficar desatualizada.
     """
     arvore = ast.parse(carregar_celula_processamento(NOTEBOOK))
-    funcoes = [n for n in arvore.body
-               if isinstance(n, ast.FunctionDef) and n.name in {"limpar_texto", "classificar_servico"}]
-    assert len(funcoes) == 2, "Funções de classificação não encontradas no notebook"
-    ns = {"pd": pd, "unicodedata": unicodedata}
-    exec(compile(ast.Module(body=funcoes, type_ignores=[]), "notebook[regras]", "exec"), ns)
+    nos = []
+    for n in arvore.body:
+        if isinstance(n, ast.FunctionDef) and n.name in FUNCOES_DE_REGRA:
+            nos.append(n)
+        elif isinstance(n, ast.Assign) and all(
+                isinstance(t, ast.Name) and t.id.startswith("TERMOS_") for t in n.targets):
+            nos.append(n)
+    nomes = {n.name for n in nos if isinstance(n, ast.FunctionDef)}
+    assert nomes == FUNCOES_DE_REGRA, f"Funções de regra não encontradas no notebook: {nomes}"
+    ns = {"pd": pd, "unicodedata": unicodedata, "re": re}
+    exec(compile(ast.Module(body=nos, type_ignores=[]), "notebook[regras]", "exec"), ns)
     return ns
 
 

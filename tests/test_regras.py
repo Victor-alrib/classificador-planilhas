@@ -1,4 +1,4 @@
-"""Regras de classificação, testadas direto sobre as funções do notebook."""
+"""Regras de classificação, testadas direto sobre o código do notebook."""
 
 import math
 
@@ -10,12 +10,15 @@ import pytest
     ("Consulta médica", "CONSULTA"),
     ("Consultas médicas do mês", "CONSULTA"),
     ("Consultas médicas realizadas em coordenação", "CONSULTA"),
+    ("Atividades realizadas em coordenação com a clínica", "CONSULTA"),
     ("Prestação de serviços médicos", "CONSULTA"),
+    ("Serviços médicos prestados", "CONSULTA"),
     ("Folha médica", "CONSULTA"),
     # PROCEDIMENTO
     ("Procedimentos médicos", "PROCEDIMENTO"),
     ("Cirurgia", "PROCEDIMENTO"),
     ("Exame diagnóstico", "PROCEDIMENTO"),
+    ("Exames diagnósticos", "PROCEDIMENTO"),
     ("Serviços hospitalares", "PROCEDIMENTO"),
     ("Ambulatório", "PROCEDIMENTO"),
     ("Hospital", "PROCEDIMENTO"),
@@ -37,10 +40,7 @@ def test_prioridade_analisar_vence_as_outras(regras):
 
 
 @pytest.mark.parametrize("texto", [
-    "CONSULTA MÉDICA",
-    "consulta medica",
-    "Consulta Médica",
-    "CONSULTA MEDICA",
+    "CONSULTA MÉDICA", "consulta medica", "Consulta Médica", "CONSULTA MEDICA",
 ])
 def test_ignora_maiusculas_e_acentos(regras, texto):
     assert regras["classificar_servico"](texto) == "CONSULTA"
@@ -50,40 +50,80 @@ def test_erro_de_digitacao_previsto_na_lista(regras):
     assert regras["classificar_servico"]("PRESTACAO DED SERVICOS") == "CONSULTA"
 
 
-@pytest.mark.parametrize("valor", [None, math.nan, "", "Reembolso de despesas", 12345])
+@pytest.mark.parametrize("valor", [None, math.nan, "", "   ", "Reembolso de despesas", 12345])
 def test_sem_correspondencia_fica_vazio(regras, valor):
     assert regras["classificar_servico"](valor) == ""
 
 
-def test_nunca_cria_categoria_fora_das_regras(regras, pasta_exemplo):
+def test_nunca_cria_categoria_fora_das_regras(regras):
     from exemplos.gerar_exemplos import ESPERADO
     textos = [t for linhas in ESPERADO.values() for t, _ in linhas]
     assert {regras["classificar_servico"](t) for t in textos} <= {"CONSULTA", "PROCEDIMENTO", "ANALISAR", ""}
 
 
-def test_limpar_texto(regras):
-    assert regras["limpar_texto"]("Prestação de SERVIÇOS") == "prestacao de servicos"
-    assert regras["limpar_texto"](None) == ""
+# ---- Correções da versão 2 ----
+
+@pytest.mark.parametrize("texto, esperado", [
+    ("Exames diagnósticos laboratoriais", "PROCEDIMENTO"),
+    ("Hospitais conveniados", "PROCEDIMENTO"),
+    ("Cirurgias eletivas", "PROCEDIMENTO"),
+    ("Produções de fevereiro", "PROCEDIMENTO"),
+    ("Exames diagnósticos; consultas médicas", "ANALISAR"),
+])
+def test_plural(regras, texto, esperado):
+    assert regras["classificar_servico"](texto) == esperado
 
 
-# ---- Limitações conhecidas do código entregue (documentadas no README) ----
-
-@pytest.mark.xfail(strict=True, reason="A lista tem 'exame diagnostico' (singular); "
-                   "o plural 'exames diagnósticos', citado na regra, não é reconhecido.")
-def test_plural_exames_diagnosticos(regras):
-    assert regras["classificar_servico"]("Exames diagnósticos") == "PROCEDIMENTO"
-
-
-@pytest.mark.xfail(strict=True, reason="Espaços repetidos e quebras de linha não são normalizados.")
-@pytest.mark.parametrize("texto", ["Consulta  médica", "Consulta\nmédica"])
-def test_espacos_extras(regras, texto):
+@pytest.mark.parametrize("texto", [
+    "Consulta  médica",       # espaço duplo
+    "Consulta\nmédica",       # quebra de linha dentro da célula
+    "Consulta\tmédica",       # tabulação
+    "Consulta médica",   # espaço não separável (comum ao copiar de sistemas)
+    "Consulta-médica",        # hífen
+    "Consulta médica.",       # pontuação no fim
+    "  Consulta médica  ",    # espaços nas pontas
+])
+def test_espacos_e_pontuacao(regras, texto):
     assert regras["classificar_servico"](texto) == "CONSULTA"
 
 
-def test_coordenacao_sozinha_vira_consulta(regras):
-    """Comportamento atual: o termo 'coordenacao' isolado basta para CONSULTA.
+@pytest.mark.parametrize("texto", [
+    "Coordenação administrativa do escritório",
+    "Coordenação de equipe médica",
+    "Coordenação",
+])
+def test_coordenacao_sozinha_nao_e_consulta(regras, texto):
+    """A regra fala em 'realizadas em coordenação'; a palavra sozinha não basta."""
+    assert regras["classificar_servico"](texto) == ""
 
-    A regra fala em 'consultas médicas realizadas em coordenação'; o código é mais amplo.
+
+@pytest.mark.parametrize("plural, singular", [
+    ("consultas", "consulta"), ("exames", "exame"), ("diagnosticos", "diagnostico"),
+    ("hospitalares", "hospitalar"), ("producoes", "producao"), ("hospitais", "hospital"),
+    ("atendimentos", "atendimento"), ("servicos", "servico"), ("itens", "item"),
+    ("consulta", "consulta"), ("mes", "mes"),
+])
+def test_singular(regras, plural, singular):
+    assert regras["singular"](plural) == singular
+
+
+def test_limpar_texto(regras):
+    assert regras["limpar_texto"]("Prestação de SERVIÇOS") == "prestacao de servico"
+    assert regras["limpar_texto"]("Exames\n diagnósticos;") == "exame diagnostico"
+    assert regras["limpar_texto"](None) == ""
+
+
+def test_termos_passam_pela_mesma_limpeza_do_texto(regras):
+    for nome in ("CONSULTA", "PROCEDIMENTO", "ANALISAR"):
+        termos, limpos = regras[f"TERMOS_{nome}"], regras[f"TERMOS_{nome}_LIMPOS"]
+        assert limpos == [regras["limpar_texto"](t) for t in termos]
+        assert all(limpos), f"termo vazio em TERMOS_{nome}"
+
+
+def test_termo_amplo_mantido_procedimento(regras):
+    """Comportamento mantido da versão 1: 'procedimento' sozinho já é PROCEDIMENTO.
+
+    A regra fala em 'procedimentos médicos'; o termo foi mantido amplo de propósito.
     Este teste trava o comportamento para que qualquer mudança seja consciente.
     """
-    assert regras["classificar_servico"]("Coordenação administrativa") == "CONSULTA"
+    assert regras["classificar_servico"]("Procedimentos ambulatoriais") == "PROCEDIMENTO"

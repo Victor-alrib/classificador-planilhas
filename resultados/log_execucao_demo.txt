@@ -1,5 +1,5 @@
 ==================================================
-  CLASSIFICADOR DE PLANILHAS
+  CLASSIFICADOR DE PLANILHAS — versão 2
 ==================================================
 
 📂 Conectando ao Google Drive...
@@ -7,20 +7,22 @@
 🔍 Verificando conteúdo da pasta 'planilhas_exemplo'...
 
   📁 Clinica_Alfa/
-     ⏭️  observacoes.txt (ignorado)
+     ⏭️  controle_interno.xlsx (sem coluna 'Discriminação' — ignorado)
      ✅ faturamento_marco.xlsx (válido)
      ⏭️  nota_fiscal_exemplo.pdf (ignorado)
-     ⏭️  controle_interno.xlsx (sem coluna 'Discriminação' — ignorado)
+     ⏭️  observacoes.txt (ignorado)
 
   📁 Clinica_Beta/
-     ✅ faturamento_marco.xlsx (válido)
      ⏭️  2025 (ignorado)
+     ✅ faturamento_marco.xlsx (válido)
 
   📁 Consultorio_Gama/
-     ✅ notas_marco.xlsx (válido)
      ⚠️  arquivo_corrompido.xlsx (não foi possível ler — ignorado)
+     ✅ notas_marco.xlsx (válido)
 
 ✅ 3 planilha(s) válida(s) encontrada(s).
+
+🔑 Senha de app lida dos Secrets do Colab.
 
 🔄 Processando planilhas...
 

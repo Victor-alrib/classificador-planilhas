@@ -11,6 +11,9 @@ processamento e troca só os três pontos de contato com o mundo externo:
 - o envio por SMTP é substituído por um objeto que guarda a mensagem (e,
   opcionalmente, a grava num arquivo `.eml`, que abre em qualquer cliente de e-mail).
 
+A senha de app, que na versão 2 vem dos *Secrets* do Colab ou de uma caixa de
+senha (`getpass`), também é simulada: dá para testar os dois caminhos.
+
 Assim, os testes e a demonstração exercitam o código real do notebook, sem
 credenciais e sem dados reais. Se alguém mudar o notebook de um jeito que quebre
 essa substituição, `carregar_celula_processamento` falha com uma mensagem clara.
@@ -18,12 +21,14 @@ essa substituição, `carregar_celula_processamento` falha com uma mensagem clar
 Uso:
     python executar_local.py                       # roda sobre exemplos/planilhas_exemplo
     python executar_local.py --entrada MINHA_PASTA --saida SAIDA
+    python executar_local.py --notebook notebook/historico/classificador_planilhas_v1.ipynb
 """
 
 from __future__ import annotations
 
 import argparse
 import contextlib
+import getpass
 import io
 import json
 import os
@@ -37,6 +42,7 @@ from unittest import mock
 
 RAIZ = Path(__file__).resolve().parent
 NOTEBOOK = RAIZ / "notebook" / "classificador_planilhas.ipynb"
+NOTEBOOK_V1 = RAIZ / "notebook" / "historico" / "classificador_planilhas_v1.ipynb"
 EXEMPLOS = RAIZ / "exemplos" / "planilhas_exemplo"
 
 # Caminhos do Colab usados pelo notebook
@@ -72,6 +78,26 @@ def _adaptar_caminhos(codigo: str, raiz_drive: Path, pasta_temp: Path) -> str:
     return codigo.replace(_TEMP_COLAB, pasta_temp.as_posix().rstrip("/") + "/")
 
 
+@contextlib.contextmanager
+def _modulos_temporarios(modulos: dict):
+    """Põe módulos falsos em sys.modules e devolve só esses nomes ao estado anterior.
+
+    (mock.patch.dict(sys.modules) restauraria o dicionário inteiro e descarregaria
+    também o pandas/numpy importados durante a execução; o numpy não pode ser
+    carregado duas vezes no mesmo processo.)
+    """
+    anteriores = {nome: sys.modules.get(nome) for nome in modulos}
+    sys.modules.update(modulos)
+    try:
+        yield
+    finally:
+        for nome, modulo in anteriores.items():
+            if modulo is None:
+                sys.modules.pop(nome, None)
+            else:
+                sys.modules[nome] = modulo
+
+
 @dataclass
 class _SMTPFalso:
     """Imita smtplib.SMTP_SSL: registra o login e guarda a mensagem em vez de enviar."""
@@ -90,6 +116,7 @@ class _SMTPFalso:
 
     def login(self, usuario: str, senha: str) -> None:
         self.registro.login_usuario = usuario
+        self.registro.login_senha = senha
         if self.falhar_login:
             raise smtplib.SMTPAuthenticationError(535, b"Senha de app recusada (simulado)")
 
@@ -108,6 +135,8 @@ class Execucao:
     erros: list[str] = field(default_factory=list)
     mensagem: EmailMessage | None = None
     login_usuario: str | None = None
+    login_senha: str | None = None
+    senha_pedida_na_tela: bool = False  # o notebook abriu a caixa de senha (getpass)
     servidor_smtp: tuple[str, int] | None = None
     pontos_de_montagem: list[str] = field(default_factory=list)
 
@@ -118,7 +147,8 @@ def executar(
     *,
     remetente: str = "remetente@exemplo.com",
     destinatario: str = "destinatario@exemplo.com",
-    senha_app: str = "senha-ficticia",
+    senha_app: str = "abcd efgh ijkl mnop",
+    senha_via: str = "secrets",
     falhar_login_smtp: bool = False,
     notebook: Path = NOTEBOOK,
     mostrar_log: bool = False,
@@ -127,7 +157,13 @@ def executar(
 
     `pasta_planilhas` faz o papel da pasta escolhida no campo PASTA_DRIVE do
     formulário; a pasta-mãe dela faz o papel de "Meu Drive".
+
+    `senha_via` diz de onde vem a senha de app na versão 2:
+    "secrets" (Secrets do Colab), "digitada" (caixa de senha) ou "nenhuma"
+    (a usuária só tecla Enter). A versão 1 lê a senha do formulário.
     """
+    if senha_via not in {"secrets", "digitada", "nenhuma"}:
+        raise ValueError(f"senha_via inválido: {senha_via!r}")
     pasta_planilhas = Path(pasta_planilhas).resolve()
     pasta_saida = Path(pasta_saida).resolve()
     pasta_saida.mkdir(parents=True, exist_ok=True)
@@ -137,16 +173,34 @@ def executar(
         carregar_celula_processamento(notebook), pasta_planilhas.parent, pasta_saida
     )
 
-    # Módulo google.colab falso: só o drive.mount() é usado pelo notebook.
+    # Módulo google.colab falso: drive.mount() e, na versão 2, userdata.get() (Secrets).
     drive = types.SimpleNamespace(
         mount=lambda caminho, force_remount=False: registro.pontos_de_montagem.append(caminho)
     )
+
+    class SecretNotFoundError(Exception):
+        pass
+
+    def ler_secret(nome: str) -> str:
+        if senha_via == "secrets" and nome == "SENHA_APP":
+            return senha_app
+        raise SecretNotFoundError(nome)
+
+    userdata = types.ModuleType("google.colab.userdata")
+    userdata.get = ler_secret
+    userdata.SecretNotFoundError = SecretNotFoundError
     colab = types.ModuleType("google.colab")
     colab.drive = drive
+    colab.userdata = userdata
     google = types.ModuleType("google")
     google.colab = colab
 
+    def caixa_de_senha(prompt: str = "") -> str:
+        registro.senha_pedida_na_tela = True
+        return senha_app if senha_via == "digitada" else ""
+
     # Valores que, no Colab, vêm do formulário (célula 2).
+    # SENHA_APP só existe no formulário da versão 1; a versão 2 ignora este valor.
     ns: dict = {
         "__name__": "__notebook__",
         "PASTA_DRIVE": pasta_planilhas.name,
@@ -157,8 +211,10 @@ def executar(
 
     saida = io.StringIO()
     fabrica_smtp = lambda host, port: _SMTPFalso(host, port, registro, falhar_login_smtp)  # noqa: E731
-    with mock.patch.dict(sys.modules, {"google": google, "google.colab": colab}), \
+    modulos = {"google": google, "google.colab": colab, "google.colab.userdata": userdata}
+    with _modulos_temporarios(modulos), \
             mock.patch.object(smtplib, "SMTP_SSL", fabrica_smtp), \
+            mock.patch.object(getpass, "getpass", caixa_de_senha), \
             contextlib.redirect_stdout(saida):
         try:
             exec(compile(codigo, f"{notebook.name}[processamento]", "exec"), ns)
@@ -187,6 +243,8 @@ def main(argv: list[str] | None = None) -> int:
                    help="Pasta onde gravar as planilhas classificadas.")
     p.add_argument("--eml", type=Path, default=None,
                    help="Arquivo .eml onde gravar o e-mail que seria enviado.")
+    p.add_argument("--notebook", type=Path, default=NOTEBOOK,
+                   help="Notebook a executar (padrão: versão atual).")
     args = p.parse_args(argv)
 
     if not args.entrada.is_dir():
@@ -195,7 +253,7 @@ def main(argv: list[str] | None = None) -> int:
             print("Gere os exemplos antes:  python exemplos/gerar_exemplos.py", file=sys.stderr)
         return 1
 
-    r = executar(args.entrada, args.saida, mostrar_log=True)
+    r = executar(args.entrada, args.saida, notebook=args.notebook, mostrar_log=True)
     eml = args.eml or args.saida.parent / "email_demo.eml"
     if r.mensagem is not None:
         eml.write_bytes(r.mensagem.as_bytes())
